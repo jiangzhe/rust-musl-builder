@@ -1,6 +1,6 @@
 # Use Debian 16.04 as the base for our Rust musl toolchain, because of
 # https://github.com/rust-lang/rust/issues/34978 (as of Rust 1.11).
-FROM ubuntu:16.04
+FROM centos:centos7
 
 # The Rust toolchain to use when building our image.  Set by `hooks/build`.
 ARG TOOLCHAIN=stable
@@ -12,18 +12,16 @@ ARG TOOLCHAIN=stable
 # We also set up a `rust` user by default, in whose account we'll install
 # the Rust toolchain.  This user has sudo privileges if you need to install
 # any more software.
-RUN apt-get update && \
-    apt-get install -y \
-        build-essential \
-        cmake \
-        curl \
-        file \
-        git \
-        musl-tools \
-        sudo \
-        xutils-dev \
-        && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+RUN yum -y install curl-devel openssl-devel git-devel file sudo perl gcc make && \
+    yum clean all && rm -rf /var/cache/yum
+
+RUN curl -O https://www.musl-libc.org/releases/musl-1.1.16.tar.gz && \
+    tar -zxf musl-1.1.16.tar.gz && \
+    cd musl-1.1.16 && \
+    ./configure && make && make install && \
+    cd .. && rm -rf musl-1.1.16 musl-1.1.16.tar.gz
+
+RUN groupadd sudo && \
     useradd rust --user-group --create-home --shell /bin/bash --groups sudo
 
 # Allow sudo without a password.
@@ -32,17 +30,24 @@ ADD sudoers /etc/sudoers.d/nopasswd
 # Run all further code as user `rust`, and create our working directories
 # as the appropriate user.
 USER rust
+ENV PATH=$PATH:/home/rust/.cargo/bin:/usr/local/musl/bin 
+# comment the proxy settings as the automatic build do not need to 
+# break GFW through proxy
+#    http_proxy=socks5://192.168.88.1:1080 \
+#    https_proxy=socks5://192.168.88.1:1080
+
 RUN mkdir -p /home/rust/libs /home/rust/src
 
 # Set up our path with all our binary directories, including those for the
 # musl-gcc toolchain and for our Rust toolchain.
-ENV PATH=/home/rust/.cargo/bin:/usr/local/musl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+#ENV PATH=/home/rust/.cargo/bin:/usr/local/musl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Install our Rust toolchain and the `musl` target.  We patch the
 # command-line we pass to the installer so that it won't attempt to
 # interact with the user or fool around with TTYs.  We also set the default
 # `--target` to musl so that our users don't need to keep overriding it
 # manually.
+
 RUN curl https://sh.rustup.rs -sSf | \
     sh -s -- -y --default-toolchain $TOOLCHAIN && \
     rustup target add x86_64-unknown-linux-musl
@@ -58,7 +63,7 @@ RUN VERS=1.0.2l && \
     curl -O https://www.openssl.org/source/openssl-$VERS.tar.gz && \
     tar xvzf openssl-$VERS.tar.gz && cd openssl-$VERS && \
     env CC=musl-gcc ./config --prefix=/usr/local/musl && \
-    env C_INCLUDE_PATH=/usr/local/musl/include/ make depend && \
+    env C_INCLUDE_PATH=/usr/local/musl/include/ && \
     make && sudo make install && \
     cd .. && rm -rf openssl-$VERS.tar.gz openssl-$VERS
 ENV OPENSSL_DIR=/usr/local/musl/ \
