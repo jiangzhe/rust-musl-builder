@@ -19,7 +19,7 @@ RUN yum -y install curl-devel openssl-devel git-devel file sudo perl gcc make &&
 RUN curl -O https://www.musl-libc.org/releases/musl-${MUSL_VERS}.tar.gz && \
     tar -zxf musl-${MUSL_VERS}.tar.gz && \
     cd musl-${MUSL_VERS} && \
-    ./configure && make && make install && \
+    ./configure > /dev/null && make > /dev/null && make install > /dev/null && \
     cd .. && rm -rf musl-${MUSL_VERS} musl-${MUSL_VERS}.tar.gz
 
 RUN groupadd sudo && \
@@ -60,9 +60,9 @@ WORKDIR /home/rust/libs
 # needed by the popular Rust `hyper` crate.
 RUN curl -O https://www.openssl.org/source/openssl-${OPENSSL_VERS}.tar.gz && \
     tar xvzf openssl-${OPENSSL_VERS}.tar.gz && cd openssl-${OPENSSL_VERS} && \
-    env CC=musl-gcc ./config --prefix=/usr/local/musl && \
+    env CC=musl-gcc ./config --prefix=/usr/local/musl > /dev/null && \
     env C_INCLUDE_PATH=/usr/local/musl/include/ && \
-    make && sudo make install && \
+    make > /dev/null && sudo make install > /dev/null && \
     cd .. && rm -rf openssl-${OPENSSL_VERS}.tar.gz openssl-$OPENSSL_VERS}
 ENV OPENSSL_DIR=/usr/local/musl/ \
     OPENSSL_INCLUDE_DIR=/usr/local/musl/include/ \
@@ -75,13 +75,13 @@ ENV OPENSSL_DIR=/usr/local/musl/ \
 # everybody needing to build them manually.)
 
 # prefetch cache for popular Rust libs
-RUN cd /tmp && \
+RUN sudo su rust bash -lc "source ~/.bashrc && cd /tmp && \
     cargo new foo --bin && \
     cd foo && \
-    echo 'iron = "*"' >> Cargo.toml && \
+    echo 'iron = \"*\"' >> Cargo.toml && \
     cargo fetch --quiet && \
     cd .. && \
-    rm -rf foo
+    rm -rf foo"
 
 # Expect our source code to live in /home/rust/src.  We'll run the build as
 # user `rust`, which will be uid 1000, gid 1000 outside the container.
