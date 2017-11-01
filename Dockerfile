@@ -1,9 +1,10 @@
-# Use Debian 16.04 as the base for our Rust musl toolchain, because of
-# https://github.com/rust-lang/rust/issues/34978 (as of Rust 1.11).
+# use centos 7
 FROM centos:centos7
 
 # The Rust toolchain to use when building our image.  Set by `hooks/build`.
 ARG TOOLCHAIN=nightly
+ARG MUSL_VERS=1.1.16
+ARG OPENSSL_VERS=1.0.2l
 
 # Make sure we have basic dev tools for building C libraries.  Our goal
 # here is to support the musl-libc builds and Cargo builds needed for a
@@ -15,11 +16,11 @@ ARG TOOLCHAIN=nightly
 RUN yum -y install curl-devel openssl-devel git-devel file sudo perl gcc make && \
     yum clean all && rm -rf /var/cache/yum
 
-RUN curl -O https://www.musl-libc.org/releases/musl-1.1.16.tar.gz && \
-    tar -zxf musl-1.1.16.tar.gz && \
-    cd musl-1.1.16 && \
+RUN curl -O https://www.musl-libc.org/releases/musl-${MUSL_VERS}.tar.gz && \
+    tar -zxf musl-${MUSL_VERS}.tar.gz && \
+    cd musl-${MUSL_VERS} && \
     ./configure && make && make install && \
-    cd .. && rm -rf musl-1.1.16 musl-1.1.16.tar.gz
+    cd .. && rm -rf musl-${MUSL_VERS} musl-${MUSL_VERS}.tar.gz
 
 RUN groupadd sudo && \
     useradd rust --user-group --create-home --shell /bin/bash --groups sudo
@@ -30,17 +31,15 @@ ADD sudoers /etc/sudoers.d/nopasswd
 # Run all further code as user `rust`, and create our working directories
 # as the appropriate user.
 USER rust
+
+# set up path to rust and gcc-musl
 ENV PATH=$PATH:/home/rust/.cargo/bin:/usr/local/musl/bin 
 # comment the proxy settings as the automatic build do not need to 
 # break GFW through proxy
-#    http_proxy=socks5://192.168.88.1:1080 \
-#    https_proxy=socks5://192.168.88.1:1080
+#    http_proxy=socks5://192.168.111.1:1080 \
+#    https_proxy=socks5://192.168.111.1:1080
 
 RUN mkdir -p /home/rust/libs /home/rust/src
-
-# Set up our path with all our binary directories, including those for the
-# musl-gcc toolchain and for our Rust toolchain.
-#ENV PATH=/home/rust/.cargo/bin:/usr/local/musl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Install our Rust toolchain and the `musl` target.  We patch the
 # command-line we pass to the installer so that it won't attempt to
@@ -59,13 +58,12 @@ WORKDIR /home/rust/libs
 
 # Build a static library version of OpenSSL using musl-libc.  This is
 # needed by the popular Rust `hyper` crate.
-RUN VERS=1.0.2l && \
-    curl -O https://www.openssl.org/source/openssl-$VERS.tar.gz && \
-    tar xvzf openssl-$VERS.tar.gz && cd openssl-$VERS && \
+RUN curl -O https://www.openssl.org/source/openssl-${OPENSSL_VERS}.tar.gz && \
+    tar xvzf openssl-${OPENSSL_VERS}.tar.gz && cd openssl-${OPENSSL_VERS} && \
     env CC=musl-gcc ./config --prefix=/usr/local/musl && \
     env C_INCLUDE_PATH=/usr/local/musl/include/ && \
     make && sudo make install && \
-    cd .. && rm -rf openssl-$VERS.tar.gz openssl-$VERS
+    cd .. && rm -rf openssl-${OPENSSL_VERS}.tar.gz openssl-$OPENSSL_VERS}
 ENV OPENSSL_DIR=/usr/local/musl/ \
     OPENSSL_INCLUDE_DIR=/usr/local/musl/include/ \
     DEP_OPENSSL_INCLUDE=/usr/local/musl/include/ \
@@ -76,10 +74,6 @@ ENV OPENSSL_DIR=/usr/local/musl/ \
 # libraries needed by the most popular and common Rust crates, to avoid
 # everybody needing to build them manually.)
 
-# Expect our source code to live in /home/rust/src.  We'll run the build as
-# user `rust`, which will be uid 1000, gid 1000 outside the container.
-WORKDIR /home/rust/src
-
 # prefetch cache for popular Rust libs
 RUN cd /tmp && \
     cargo new foo --bin && \
@@ -88,4 +82,8 @@ RUN cd /tmp && \
     cargo fetch --quiet && \
     cd .. && \
     rm -rf foo
+
+# Expect our source code to live in /home/rust/src.  We'll run the build as
+# user `rust`, which will be uid 1000, gid 1000 outside the container.
+WORKDIR /home/rust/src
 
