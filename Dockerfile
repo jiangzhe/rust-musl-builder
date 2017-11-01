@@ -3,7 +3,7 @@
 FROM centos:centos7
 
 # The Rust toolchain to use when building our image.  Set by `hooks/build`.
-ARG TOOLCHAIN=stable
+ARG TOOLCHAIN=nightly
 
 # Make sure we have basic dev tools for building C libraries.  Our goal
 # here is to support the musl-libc builds and Cargo builds needed for a
@@ -79,3 +79,13 @@ ENV OPENSSL_DIR=/usr/local/musl/ \
 # Expect our source code to live in /home/rust/src.  We'll run the build as
 # user `rust`, which will be uid 1000, gid 1000 outside the container.
 WORKDIR /home/rust/src
+
+# prefetch cache for popular Rust libs
+RUN cd /tmp && \
+    cargo new foo --bin && \
+    cd foo && \
+    echo 'iron = "*"' >> Cargo.toml && \
+    cargo fetch --quiet && \
+    cd .. && \
+    rm -rf foo
+
